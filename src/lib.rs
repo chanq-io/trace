@@ -313,7 +313,7 @@ fn transform_method(
     );
 }
 
-fn construct_traced_block(
+fn construct_default_traced_block(
     args: &args::Args,
     attr_applied: AttrApplied,
     sig: &syn::Signature,
@@ -362,6 +362,46 @@ fn construct_traced_block(
         #pause_stmt
         fn_return_value
     }}
+}
+
+fn construct_performance_log_traced_block(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    sig: &syn::Signature,
+    original_block: &syn::Block,
+) -> syn::Block {
+    let arg_idents = extract_arg_idents(args, attr_applied, &sig);
+    let arg_idents_format = arg_idents
+        .iter()
+        .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let module = args.performance_log.as_ref().unwrap();
+    let entering_format = format!(
+        "[perf] [{}] [start] {}({})",
+        &module, sig.ident, arg_idents_format
+    );
+    let exiting_format = format!("[perf] [{}] [end] {} = {{:?}}", &module, sig.ident);
+
+    parse_quote! {{
+        println!(#entering_format, #(#arg_idents,)*);
+        let fn_return_value = #original_block;
+        println!(#exiting_format, fn_return_value);
+        fn_return_value
+    }}
+}
+
+fn construct_traced_block(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    sig: &syn::Signature,
+    original_block: &syn::Block,
+) -> syn::Block {
+    if args.performance_log.is_some() {
+        construct_performance_log_traced_block(args, attr_applied, sig, original_block)
+    } else {
+        construct_default_traced_block(args, attr_applied, sig, original_block)
+    }
 }
 
 fn extract_arg_idents(

@@ -9,6 +9,7 @@ pub(crate) struct Args {
     pub(crate) pause: bool,
     pub(crate) pretty: bool,
     pub(crate) logging: bool,
+    pub(crate) performance_log: Option<String>,
 }
 
 pub(crate) enum Filter {
@@ -22,6 +23,7 @@ const DEFAULT_PREFIX_EXIT: &str = "[-]";
 const DEFAULT_PAUSE: bool = false;
 const DEFAULT_PRETTY: bool = false;
 const DEFAULT_LOGGING: bool = false;
+const DEFAULT_PERFORMANCE_LOG: Option<String> = None;
 
 impl Args {
     pub(crate) fn from_raw_args(raw_args: syn::AttributeArgs) -> Result<Self, Vec<syn::Error>> {
@@ -35,6 +37,7 @@ impl Args {
             Pause(proc_macro2::Span, bool),
             Pretty(proc_macro2::Span, bool),
             Logging(proc_macro2::Span, bool),
+            PerformanceLog(proc_macro2::Span, Option<String>),
         }
 
         // Parse arguments
@@ -48,6 +51,7 @@ impl Args {
                     Pause,
                     Pretty,
                     Logging,
+                    PerformanceLog,
                 }
 
                 let ident = &meta.path().segments.first().unwrap().ident;
@@ -59,6 +63,7 @@ impl Args {
                     "pause" => ArgName::Pause,
                     "pretty" => ArgName::Pretty,
                     "logging" => ArgName::Logging,
+                    "performance_log" => ArgName::PerformanceLog,
                     _ => {
                         return Err(vec![syn::Error::new_spanned(
                             ident.clone(),
@@ -109,6 +114,12 @@ impl Args {
                         "`logging` must be a meta word",
                     )]
                 };
+                let performance_log_type_error = || {
+                    vec![syn::Error::new_spanned(
+                        ident.clone(),
+                        "`performance_log` must be a meta word",
+                    )]
+                };
 
                 match *meta {
                     syn::Meta::Path(_) => match arg_name {
@@ -120,6 +131,7 @@ impl Args {
                         ArgName::PrefixExit => Err(prefix_exit_type_error()),
                         ArgName::Enable => Err(enable_type_error()),
                         ArgName::Disable => Err(disable_type_error()),
+                        ArgName::PerformanceLog => Err(performance_log_type_error()),
                     },
                     syn::Meta::List(syn::MetaList { ref nested, .. }) => match arg_name {
                         ArgName::Enable => {
@@ -166,10 +178,10 @@ impl Args {
                                 Err(other_nested_meta_errors)
                             }
                         }
-
                         ArgName::PrefixEnter => Err(prefix_enter_type_error()),
                         ArgName::PrefixExit => Err(prefix_exit_type_error()),
                         ArgName::Pause => Err(pause_type_error()),
+                        ArgName::PerformanceLog => Err(performance_log_type_error()),
                         ArgName::Pretty => Err(pretty_type_error()),
                         ArgName::Logging => Err(logging_type_error()),
                     },
@@ -190,6 +202,15 @@ impl Args {
                             _ => Err(vec![syn::Error::new_spanned(
                                 lit,
                                 "`prefix_exit` must have a string value",
+                            )]),
+                        },
+                        ArgName::PerformanceLog => match *lit {
+                            syn::Lit::Str(ref lit_str) => {
+                                Ok(Arg::PerformanceLog(meta.span(), Some(lit_str.value())))
+                            }
+                            _ => Err(vec![syn::Error::new_spanned(
+                                lit,
+                                "`performance_log` must have a string value",
                             )]),
                         },
 
@@ -215,6 +236,7 @@ impl Args {
         let mut pretty_args = vec![];
         let mut logging_args = vec![];
         let mut errors = vec![];
+        let mut performance_log_args = vec![];
 
         // Group arguments of the same type and errors
         for arg_res in args_res {
@@ -227,6 +249,7 @@ impl Args {
                     Arg::Pause(span, b) => pause_args.push((span, b)),
                     Arg::Pretty(span, b) => pretty_args.push((span, b)),
                     Arg::Logging(span, b) => logging_args.push((span, b)),
+                    Arg::PerformanceLog(span, b) => performance_log_args.push((span, b)),
                 },
                 Err(es) => errors.extend(es),
             }
@@ -282,6 +305,13 @@ impl Args {
                     .map(|(span, _)| syn::Error::new(*span, "duplicate `logging`")),
             );
         }
+        if performance_log_args.len() >= 2 {
+            errors.extend(
+                performance_log_args
+                    .iter()
+                    .map(|(span, _)| syn::Error::new(*span, "duplicate `enable`")),
+            );
+        }
 
         // Report the presence of mutually exclusive arguments
         if enable_args.len() == 1 && disable_args.len() == 1 {
@@ -315,6 +345,8 @@ impl Args {
             let pause = first_no_span!(pause_args).unwrap_or(DEFAULT_PAUSE);
             let pretty = first_no_span!(pretty_args).unwrap_or(DEFAULT_PRETTY);
             let logging = first_no_span!(logging_args).unwrap_or(DEFAULT_LOGGING);
+            let performance_log =
+                first_no_span!(performance_log_args).unwrap_or(DEFAULT_PERFORMANCE_LOG);
 
             Ok(Self {
                 prefix_enter,
@@ -323,6 +355,7 @@ impl Args {
                 pause,
                 pretty,
                 logging,
+                performance_log,
             })
         } else {
             Err(errors)
