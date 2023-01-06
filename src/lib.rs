@@ -73,7 +73,6 @@
 //! note that using trace as an inner attribute (`#![trace]`) is not supported at this time.
 
 mod args;
-
 use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
@@ -104,6 +103,23 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     } else {
         let input2 = proc_macro2::TokenStream::from(input);
         syn::Error::new_spanned(input2, "`init_depth_var` takes no arguments").to_compile_error()
+    };
+
+    output.into()
+}
+
+#[proc_macro]
+pub fn init_performance_logging(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let output = if input.is_empty() {
+        quote! {
+            ::std::thread_local! {
+                static ENABLE_PERFORMANCE_LOGGING: bool = ::std::env::var("ENABLE_PERFORMANCE_LOGGING").is_ok();
+            }
+        }
+    } else {
+        let input2 = proc_macro2::TokenStream::from(input);
+        syn::Error::new_spanned(input2, "`init_performance_logging` takes no arguments")
+            .to_compile_error()
     };
 
     output.into()
@@ -384,9 +400,14 @@ fn construct_performance_log_traced_block(
     let exiting_format = format!("[perf] [{}] [end] {} = {{:?}}", &module, sig.ident);
 
     parse_quote! {{
-        println!(#entering_format, #(#arg_idents,)*);
+        let logging_enabled = ENABLE_PERFORMANCE_LOGGING.with(|b| b.to_owned());
+        if logging_enabled {
+            println!(#entering_format, #(#arg_idents,)*);
+        }
         let fn_return_value = #original_block;
-        println!(#exiting_format, fn_return_value);
+        if logging_enabled {
+            println!(#exiting_format, fn_return_value);
+        }
         fn_return_value
     }}
 }

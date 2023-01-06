@@ -2,6 +2,7 @@ use async_std::task;
 use trace::trace;
 
 trace::init_depth_var!();
+trace::init_performance_logging!();
 
 #[trace(performance_log = "example_async")]
 async fn squared(x: i32) -> i32 {
@@ -56,6 +57,7 @@ impl Math {
 }
 
 fn main() {
+    std::env::set_var("ENABLE_PERFORMANCE_LOGGING", "1");
     task::block_on(async {
         Math::cubed(32).await;
         Math::add(32, 32);
