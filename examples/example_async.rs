@@ -57,7 +57,7 @@ impl Math {
 }
 
 fn main() {
-    std::env::set_var("ENABLE_PERFORMANCE_LOGGING", "1");
+    std::env::set_var("ENABLE_PERFORMANCE_LOGGING", "true");
     task::block_on(async {
         Math::cubed(32).await;
         Math::add(32, 32);

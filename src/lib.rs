@@ -113,7 +113,7 @@ pub fn init_performance_logging(input: proc_macro::TokenStream) -> proc_macro::T
     let output = if input.is_empty() {
         quote! {
             ::std::thread_local! {
-                static ENABLE_PERFORMANCE_LOGGING: bool = ::std::env::var("ENABLE_PERFORMANCE_LOGGING").is_ok();
+                static ENABLE_PERFORMANCE_LOGGING: bool = ::std::env::var("ENABLE_PERFORMANCE_LOGGING").map_or(false, |v| v == "1" || v.to_lowercase() == "true");
             }
         }
     } else {
