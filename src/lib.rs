@@ -73,7 +73,6 @@
 //! note that using trace as an inner attribute (`#![trace]`) is not supported at this time.
 
 mod args;
-
 use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
@@ -104,6 +103,23 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     } else {
         let input2 = proc_macro2::TokenStream::from(input);
         syn::Error::new_spanned(input2, "`init_depth_var` takes no arguments").to_compile_error()
+    };
+
+    output.into()
+}
+
+#[proc_macro]
+pub fn init_performance_logging(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let output = if input.is_empty() {
+        quote! {
+            ::std::thread_local! {
+                static ENABLE_PERFORMANCE_LOGGING: bool = ::std::env::var("ENABLE_PERFORMANCE_LOGGING").map_or(false, |v| v == "1" || v.to_lowercase() == "true");
+            }
+        }
+    } else {
+        let input2 = proc_macro2::TokenStream::from(input);
+        syn::Error::new_spanned(input2, "`init_performance_logging` takes no arguments")
+            .to_compile_error()
     };
 
     output.into()
@@ -313,7 +329,7 @@ fn transform_method(
     );
 }
 
-fn construct_traced_block(
+fn construct_default_traced_block(
     args: &args::Args,
     attr_applied: AttrApplied,
     sig: &syn::Signature,
@@ -362,6 +378,51 @@ fn construct_traced_block(
         #pause_stmt
         fn_return_value
     }}
+}
+
+fn construct_performance_log_traced_block(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    sig: &syn::Signature,
+    original_block: &syn::Block,
+) -> syn::Block {
+    let arg_idents = extract_arg_idents(args, attr_applied, &sig);
+    let arg_idents_format = arg_idents
+        .iter()
+        .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let module = args.performance_log.as_ref().unwrap();
+    let entering_format = format!(
+        "[perf] [{}] [start] {}({})",
+        &module, sig.ident, arg_idents_format
+    );
+    let exiting_format = format!("[perf] [{}] [end] {} = {{:?}}", &module, sig.ident);
+
+    parse_quote! {{
+        let logging_enabled = ENABLE_PERFORMANCE_LOGGING.with(|b| b.to_owned());
+        if logging_enabled {
+            println!(#entering_format, #(#arg_idents,)*);
+        }
+        let fn_return_value = #original_block;
+        if logging_enabled {
+            println!(#exiting_format, fn_return_value);
+        }
+        fn_return_value
+    }}
+}
+
+fn construct_traced_block(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    sig: &syn::Signature,
+    original_block: &syn::Block,
+) -> syn::Block {
+    if args.performance_log.is_some() {
+        construct_performance_log_traced_block(args, attr_applied, sig, original_block)
+    } else {
+        construct_default_traced_block(args, attr_applied, sig, original_block)
+    }
 }
 
 fn extract_arg_idents(
